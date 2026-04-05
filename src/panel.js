@@ -734,7 +734,7 @@ export const Panel = GObject.registerClass(
       )
       let isOverview = !!Main.overview.visibleTarget
       let isOverviewFocusedMonitor = isOverview && isFocusedMonitor
-      let isShown = !isOverview || isOverviewFocusedMonitor
+      let isShown = !isOverview || isOverviewFocusedMonitor || !this.isPrimary
       let actorData = Utils.getTrackedActorData(this.panelBox)
 
       // prevent the "chrome" to update the panelbox visibility while in overview
