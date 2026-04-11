@@ -80,6 +80,40 @@ export default class DashToPanelExtension extends Extension {
     // reset to be safe
     SETTINGS.set_boolean('prefs-opened', false)
 
+    // Suppress the startup overview before any async operations.
+    // This must happen synchronously to avoid a timing race with the startup
+    // animation, which can start before an awaited promise resolves.
+    //
+    // In GNOME 50+, Main.layoutManager.startInOverview was removed. The
+    // startup animation now branches exclusively on Main.sessionMode.hasOverview
+    // in _prepareStartupAnimation() / _startupAnimationSession(). We therefore:
+    //   1. Guard the legacy startInOverview assignment with a property-existence
+    //      check to avoid silently setting a no-op property on GNOME 50+.
+    //   2. Set hasOverview=false (still respected on all supported versions).
+    //   3. Add Main.overview.hide() in the startup-complete handler as an
+    //      explicit fallback for GNOME 50+ in case the animation already ran.
+    if ('startInOverview' in Main.layoutManager) {
+      Main.layoutManager.startInOverview = !SETTINGS.get_boolean(
+        'hide-overview-on-startup',
+      )
+    }
+
+    if (
+      SETTINGS.get_boolean('hide-overview-on-startup') &&
+      Main.layoutManager._startingUp
+    ) {
+      Main.sessionMode.hasOverview = false
+      startupCompleteHandler = Main.layoutManager.connect(
+        'startup-complete',
+        () => {
+          Main.sessionMode.hasOverview = this._realHasOverview
+          // GNOME 50+: explicitly hide the overview in case the startup
+          // animation ran before hasOverview=false could take effect.
+          Main.overview.hide()
+        },
+      )
+    }
+
     await PanelSettings.init(SETTINGS)
 
     // To remove later, try to map settings using monitor indexes to monitor ids
@@ -105,21 +139,6 @@ export default class DashToPanelExtension extends Extension {
       )
 
       SETTINGS.set_int('extension-version', this.metadata.version)
-    }
-
-    Main.layoutManager.startInOverview = !SETTINGS.get_boolean(
-      'hide-overview-on-startup',
-    )
-
-    if (
-      SETTINGS.get_boolean('hide-overview-on-startup') &&
-      Main.layoutManager._startingUp
-    ) {
-      Main.sessionMode.hasOverview = false
-      startupCompleteHandler = Main.layoutManager.connect(
-        'startup-complete',
-        () => (Main.sessionMode.hasOverview = this._realHasOverview),
-      )
     }
 
     this.enableGlobalStyles()
